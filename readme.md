@@ -3,7 +3,15 @@ rBoot - An open source boot loader for the ESP8266
 by Richard A Burton, richardaburton@gmail.com
 http://richard.burtons.org/
 
+Branch rboot4lcm to complement homeaccessorykid/life-cycle-manager
+------------------------------------------------------------------
+The objective of this branch is to make rboot recognize multiple power reboots
+in short time. If detected the lcm ota-main sector will be launched. Based on 
+the amount of reboots, also the sys-param area will be cleared. This provides a
+fallback at all times to recover from bad user code or to change the user repository.
 
+Below is the standard readme that comes with the rboot repository
+-----------------------------------------------------------------
 rBoot is designed to be a flexible open source boot loader, a replacement for
 the binary blob supplied with the SDK. It has the following advantages over the
 Espressif loader:
