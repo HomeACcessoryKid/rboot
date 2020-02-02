@@ -311,7 +311,6 @@ the last byte will contain the amount of open continue-bits and is a signal for 
 #define RBOOT_SIZE BOOT_BITS_ADDR-BOOT_CONFIG_SECTOR*SECTOR_SIZE
 #define LAST_ADDR (BOOT_CONFIG_SECTOR+1)*SECTOR_SIZE
 #define FIELD_SIZE (LAST_ADDR-BOOT_BITS_ADDR)/2
-    int outcome=0;
     uint32_t start_bits, continue_bits, help_bits, count;
 
     //read last byte of BOOT_CONFIG_SECTOR to see if we need to reflash it if we ran out of status bits
@@ -335,14 +334,14 @@ the last byte will contain the amount of open continue-bits and is a signal for 
     if (count<33)  ets_printf("reformatted start_bits: %08x count: %d\n",start_bits,count);
     //find the beginning of start-bit-range
     do {SPIRead(loadAddr,&start_bits,4);
-         ets_printf("%04x: %08x\n",loadAddr,start_bits);
+        if (start_bits) ets_printf("%04x: %08x\n",loadAddr,start_bits);
         loadAddr+=4;
     } while (!start_bits && loadAddr<LAST_ADDR); //until a non-zero value
     loadAddr-=4; //return to the address where start_bits was read
     
     SPIRead(loadAddr-FIELD_SIZE,&continue_bits,4);
      ets_printf("%04x: %08x\n",loadAddr-FIELD_SIZE,continue_bits);
-    count=0;
+    count=1;
     help_bits=~start_bits&continue_bits; //collect the bits that are not in start_bits
     while (help_bits) {help_bits&=(help_bits-1);count++;} //count the bits using Brian Kernighan’s Algorithm
     if (continue_bits==~0 && loadAddr-FIELD_SIZE>BOOT_BITS_ADDR) {
@@ -356,43 +355,23 @@ the last byte will contain the amount of open continue-bits and is a signal for 
     if (loadAddr<LAST_ADDR-4) {
         start_bits>>=1; //clear leftmost 1-bit
         SPIWrite(loadAddr,&start_bits,4);
-    } else { //reflash this sector because we reached the end (encode count+1 in last byte and do in next cycle)
-        count++;
+    } else { //reflash this sector because we reached the end (encode count in last byte and do in next cycle)
         SPIWrite(LAST_ADDR-4,&count,4);
-        count--;
     }
     //the "logic" section
-    if (count<6) {
-        ets_delay_us(BOOT_CYCLE_DELAY_MICROS);
-//========================================//if we powercycle, this is where it stops!
-        if (count>=3) outcome=1; //ota-boot
-    } else outcome=2; //factory reset, then ota-boot
-    
-    //clear_all_cont_bits(); //TODO: what if the powercycle happens again in the middle of this?
-    help_bits=0;
+    if (count<16) ets_delay_us(BOOT_CYCLE_DELAY_MICROS);
+//==================================================//if we powercycle, this is where it stops!
+
+    help_bits=0; //clear_all_continue_bits
     if (loadAddr<LAST_ADDR-4) {
         if (continue_bits==~0 && loadAddr-FIELD_SIZE>BOOT_BITS_ADDR) SPIWrite(loadAddr-FIELD_SIZE-4,&help_bits,4);
         SPIWrite(loadAddr-FIELD_SIZE,&start_bits,4);
     } else { //reflash this sector because we reached the end (encode ZERO in last byte and do in next cycle)
         SPIWrite(LAST_ADDR-4,&help_bits,4);
     }
-     ets_printf("outcome: %d\n",outcome);
-
-    if (outcome==2) { //factory reset
-        unsigned int  sysparam_len = 32;
-        unsigned char sysparam[] = { //ota_version=0.0.0
-          0x45, 0x4f, 0x52, 0x70, 0x01, 0x40, 0x00, 0x00,
-          0x01, 0x80, 0x0b, 0x00, 0x6f, 0x74, 0x61, 0x5f,
-          0x76, 0x65, 0x72, 0x73, 0x69, 0x6f, 0x6e, 0x01,
-          0xa0, 0x05, 0x00, 0x30, 0x2e, 0x30, 0x2e, 0x30
-        };
-        SPIEraseSector(SYSPARAM_SECTOR);
-        SPIEraseSector(SYSPARAM_SECTOR+1);
-        SPIWrite(SYSPARAM_SECTOR*SECTOR_SIZE, sysparam, sysparam_len);
-        sysparam[5]=0x80; //changes from 0x40 firstactive to 0x80 secondstale
-        SPIWrite((SYSPARAM_SECTOR+1)*SECTOR_SIZE, sysparam, sysparam_len);
-        SPIWrite(LAST_ADDR,&help_bits,4); //make rom0 bad so it cannot boot anymore
-    } //further down we will select romToBoot = 1 = ota-boot
+/* --------------------------------------------
+   End of rboot4lcm key code. count is used further down for choosing rom and stored in rtc for ota-main to interpret
+   --------------------------------------------- */
 
 	// read rom header
 	SPIRead(0, header, sizeof(rom_header));
@@ -566,7 +545,7 @@ the last byte will contain the amount of open continue-bits and is a signal for 
 		updateConfig = 1;
 	}
 
-    if (outcome) romToBoot = 1; //takes priority over tmpboot and gpio
+    if (count>COUNT4USER) romToBoot = 1; //rboot4lcm takes priority over tmpboot and gpio
     
 	// check rom is valid
 	loadAddr = check_image(romconf->roms[romToBoot]);
@@ -606,6 +585,7 @@ the last byte will contain the amount of open continue-bits and is a signal for 
 		loadAddr = check_image(romconf->roms[romToBoot]);
 	}
 
+#ifndef OTA_MAIN_SECTOR  //for LCM OTA never rewrite
 	// re-write config, if required
 	if (updateConfig) {
 		ets_printf("Re-writing config with Rom %d.\r\n",romToBoot);
@@ -616,6 +596,7 @@ the last byte will contain the amount of open continue-bits and is a signal for 
 		SPIEraseSector(BOOT_CONFIG_SECTOR);
 		SPIWrite(BOOT_CONFIG_SECTOR * SECTOR_SIZE, buffer, SECTOR_SIZE);
 	}
+#endif
 
 #ifdef BOOT_RTC_ENABLED
 	// set rtc boot data for app to read
@@ -627,7 +608,7 @@ the last byte will contain the amount of open continue-bits and is a signal for 
 	if (gpio_boot) rtc.last_mode |= MODE_GPIO_ROM;
 #endif
 	rtc.last_rom = romToBoot;
-	rtc.temp_rom = 0;
+	rtc.temp_rom = count; //we (ab)use this field to convey the count value on the way out
 	rtc.chksum = calc_chksum((uint8_t*)&rtc, (uint8_t*)&rtc.chksum);
 	system_rtc_mem(RBOOT_RTC_ADDR, &rtc, sizeof(rboot_rtc_data), RBOOT_RTC_WRITE);
 #endif

@@ -135,7 +135,7 @@ typedef struct {
 	uint8_t next_mode;        ///< The next boot mode, defaults to MODE_STANDARD - can be set to MODE_TEMP_ROM
 	uint8_t last_mode;        ///< The last (this) boot mode - can be MODE_STANDARD, MODE_GPIO_ROM or MODE_TEMP_ROM
 	uint8_t last_rom;         ///< The last (this) boot rom number
-	uint8_t temp_rom;         ///< The next boot rom number when next_mode set to MODE_TEMP_ROM
+	uint8_t temp_rom;         ///< The next boot rom number when next_mode set to MODE_TEMP_ROM else rboot4lcm count of powercycles
 	uint8_t chksum;           ///< Checksum of this structure this will be updated for you passed to the API
 } rboot_rtc_data;
 #endif
@@ -149,8 +149,6 @@ static uint8_t default_config(rboot_config *romconf, uint32_t flashsize) {
 	romconf->count = 2;
 	romconf->roms[0] = SECTOR_SIZE * (BOOT_CONFIG_SECTOR + 1);
 	romconf->roms[1] = SECTOR_SIZE * OTA_MAIN_SECTOR;
-// 	romconf->roms[2] = SECTOR_SIZE * (OTA_MAIN_SECTOR - 1);
-// 	romconf->roms[3] = SECTOR_SIZE * (OTA_MAIN_SECTOR - 2); //TODO: spare slots in case otamain grows
 }
 #endif
 
