@@ -3,7 +3,8 @@
 // Copyright 2015 Richard A Burton
 // richardaburton@gmail.com
 // See license.txt for license terms.
-//////////////////////////////////////////////////
+// Changes for rboot4lcm by HomeACcessoryKid@gmail.com (c)2020
+/////////////////////////////////////////////////////////////
 
 #include "rboot-private.h"
 #include <rboot-hex2a.h>
@@ -296,7 +297,7 @@ uint32_t NOINLINE find_image(void) {
 
 #ifdef BOOT_BAUDRATE
 	// soft reset doesn't reset PLL/divider, so leave as configured
-	if (get_reset_reason() != REASON_SOFT_RESTART) {
+	if (!(get_reset_reason()==REASON_SOFT_RESTART || get_reset_reason()==REASON_SOFT_WDT_RST)) {
 		uart_div_modify( 0, UART_CLK_FREQ / BOOT_BAUDRATE);
 	}
 #endif
@@ -330,26 +331,26 @@ the last byte will contain the amount of open continue-bits and is a signal for 
 	ets_delay_us(BOOT_DELAY_MICROS);
 #endif
 
-    ets_printf("\r\nrBoot4LCM v0.2.0\r\n");
-    if (count<33)  ets_printf("reformatted start_bits: %08x count: %d\n",start_bits,count);
+    ets_printf("\r\nrBoot4LCM v0.9.0\r\n");
+    if (count<33)  ets_printf("reformatted start_bits field: %08x count: %d\n",start_bits,count);
     //find the beginning of start-bit-range
     do {SPIRead(loadAddr,&start_bits,4);
-        if (start_bits) ets_printf("%04x: %08x\n",loadAddr,start_bits);
+        if (start_bits) ets_printf("         %08x @ %04x\n",start_bits,loadAddr);
         loadAddr+=4;
     } while (!start_bits && loadAddr<LAST_ADDR); //until a non-zero value
     loadAddr-=4; //return to the address where start_bits was read
     
     SPIRead(loadAddr-FIELD_SIZE,&continue_bits,4);
-     ets_printf("%04x: %08x\n",loadAddr-FIELD_SIZE,continue_bits);
+    if (continue_bits!=~0 || loadAddr-FIELD_SIZE<=BOOT_BITS_ADDR) ets_printf("         %08x @ %04x",continue_bits,loadAddr-FIELD_SIZE);
     count=1;
     help_bits=~start_bits&continue_bits; //collect the bits that are not in start_bits
     while (help_bits) {help_bits&=(help_bits-1);count++;} //count the bits using Brian Kernighan’s Algorithm
     if (continue_bits==~0 && loadAddr-FIELD_SIZE>BOOT_BITS_ADDR) {
         SPIRead(loadAddr-FIELD_SIZE-4,&help_bits,4); //read the previous word
-         ets_printf("%04x: %08x\n",loadAddr-FIELD_SIZE-4,help_bits);
+         ets_printf("%08x ffffffff @ %04x",help_bits,loadAddr-FIELD_SIZE-4);
         while (help_bits) {help_bits&=(help_bits-1);count++;} //count more bits
     }
-     ets_printf("count: %d\n",count);
+     ets_printf(" => count: %d\n",count);
     
     //clear_start_bit();
     if (loadAddr<LAST_ADDR-4) {
@@ -358,7 +359,7 @@ the last byte will contain the amount of open continue-bits and is a signal for 
     } else { //reflash this sector because we reached the end (encode count in last byte and do in next cycle)
         SPIWrite(LAST_ADDR-4,&count,4);
     }
-    //the "logic" section
+    
     if (count<16) ets_delay_us(BOOT_CYCLE_DELAY_MICROS);
 //==================================================//if we powercycle, this is where it stops!
 
@@ -585,7 +586,7 @@ the last byte will contain the amount of open continue-bits and is a signal for 
 		loadAddr = check_image(romconf->roms[romToBoot]);
 	}
 
-#ifndef OTA_MAIN_SECTOR  //for LCM OTA never rewrite
+#ifndef OTA_MAIN_SECTOR  //for rboot4LCM OTA never rewrite
 	// re-write config, if required
 	if (updateConfig) {
 		ets_printf("Re-writing config with Rom %d.\r\n",romToBoot);
