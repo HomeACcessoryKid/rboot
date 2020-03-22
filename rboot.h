@@ -121,6 +121,7 @@ typedef struct {
 	uint32_t roms[MAX_ROMS]; ///< Flash addresses of each ROM
 #ifdef BOOT_CONFIG_CHKSUM
 	uint8_t chksum;          ///< Checksum of this configuration structure (if BOOT_CONFIG_CHKSUM defined)
+    uint8_t padding[3];      ///< Assure struct is a multiple of 32bits
 #endif
 } rboot_config;
 

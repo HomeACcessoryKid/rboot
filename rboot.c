@@ -269,6 +269,16 @@ static uint8_t default_config(rboot_config *romconf, uint32_t flashsize) {
 }
 #endif
 
+#ifdef OTA_MAIN_SECTOR  //rboot4lcm sets this to control a led. Identical to the GPIO defines before
+#define ETS_UNCACHED_ADDR(addr) (addr)
+#define READ_PERI_REG(addr) (*((volatile uint32_t *)ETS_UNCACHED_ADDR(addr)))
+#define WRITE_PERI_REG(addr, val) (*((volatile uint32_t *)ETS_UNCACHED_ADDR(addr))) = (uint32_t)(val)
+#define REG_GPIO_BASE           0x60000300          // a register that defines all pins output value
+#define GPIO_ENABLE_OUT_ADDRESS (REG_GPIO_BASE+0x0c)// a register that defines pin in/output mode
+#define REG_IOMUX_BASE          0x60000800
+#define IOMUX_FUNC_MASK         0x0130
+#endif
+
 // prevent this function being placed inline with main
 // to keep main's stack size as small as possible
 // don't mark as static or it'll be optimised out when
@@ -331,7 +341,7 @@ the last byte will contain the amount of open continue-bits and is a signal for 
 	ets_delay_us(BOOT_DELAY_MICROS);
 #endif
 
-    ets_printf("\r\nrBoot4LCM v0.9.0\r\n");
+    ets_printf("\r\nrBoot4LCM v0.9.2\r\n");
     if (count<33)  ets_printf("reformatted start_bits field: %08x count: %d\n",start_bits,count);
     //find the beginning of start-bit-range
     do {SPIRead(loadAddr,&start_bits,4);
@@ -360,8 +370,46 @@ the last byte will contain the amount of open continue-bits and is a signal for 
         SPIWrite(LAST_ADDR-4,&count,4);
     }
     
+    int led_pin=0,polarity=0,led_valid=0;
+	SPIRead(BOOT_CONFIG_SECTOR * SECTOR_SIZE, romconf, sizeof(rboot_config)); // only to read the LED value and polarity
+	int led_info=romconf->unused[1];
+	//encoding: bit7 MUST be 0, bit6 MUST be 1, bit 5 don't care, bit 4 polarity, bits 3-0 led gpio pin number
+	if (!(led_info&(1<<7)) && !((~led_info)&(1<<6))) {
+	    polarity=led_info&0x10; led_pin=led_info&0x0f;
+	    if ( (led_pin!=0 && led_pin<6) || led_pin>11 ) led_valid=1; //do not allow pins 0 and 6-11
+        ets_printf("led_pin=%d, polarity=%d, led_valid=%d\n",led_pin,polarity,led_valid);
+	}
+
+    uint32_t old_dir,new_dir,iomux_reg,old_iomux,gpio_func,new_iomux,old_out,new_out;
+    if (count>1 && count<16) { //some devices have trouble to find the right timing for a power cycle so delay*3
+        if (led_valid) {
+            ets_printf("LED ON");
+            //Support for LED driving //make the gpio pin an output
+            old_dir = READ_PERI_REG(GPIO_ENABLE_OUT_ADDRESS);
+            new_dir = old_dir | (1<<led_pin);
+            WRITE_PERI_REG(GPIO_ENABLE_OUT_ADDRESS, new_dir);
+            //set the function to be GPIO, it might not be by default // e.g. PIN_FUNC_SELECT(PERIPHS_IO_MUX_GPIO2_U,FUNC_GPIO2); 
+            const uint8_t IOMUX_REG_OFFS[]= {0x34, 0x18, 0x38, 0x14, 0x3c, 0x40, 0x1c, 0x20, 0x24, 0x28, 0x2c, 0x30, 0x04, 0x08, 0x0c, 0x10};
+            const uint8_t IOMUX_GPIO_FUNC[]={0x00, 0x30, 0x00, 0x30, 0x00, 0x00, 0x30, 0x30, 0x30, 0x30, 0x30, 0x30, 0x30, 0x30, 0x30, 0x30};
+            iomux_reg = REG_IOMUX_BASE + IOMUX_REG_OFFS[led_pin];
+            old_iomux = READ_PERI_REG(iomux_reg);
+            gpio_func = IOMUX_GPIO_FUNC[led_pin];
+            new_iomux = (old_iomux & ~IOMUX_FUNC_MASK) | gpio_func ;
+            WRITE_PERI_REG(iomux_reg, new_iomux);
+            //define the right led array value to apply for led=on
+            old_out = READ_PERI_REG(REG_GPIO_BASE);
+            new_out = polarity?old_out|(1<<led_pin):old_out&~(1<<led_pin);
+            WRITE_PERI_REG(REG_GPIO_BASE,new_out); //and switch on the LED
+        }
+        ets_delay_us(2*BOOT_CYCLE_DELAY_MICROS); //additional two delay cycles
+    }
     if (count<16) ets_delay_us(BOOT_CYCLE_DELAY_MICROS);
 //==================================================//if we powercycle, this is where it stops!
+    if (led_valid && count>1 && count<16) {
+      	ets_printf(" and OFF\n");
+        // set level, iomux & GPIO output mode back to initial values
+        WRITE_PERI_REG(REG_GPIO_BASE,old_out); WRITE_PERI_REG(iomux_reg,old_iomux); WRITE_PERI_REG(GPIO_ENABLE_OUT_ADDRESS,old_dir);
+    }
 
     help_bits=0; //clear_all_continue_bits
     if (loadAddr<LAST_ADDR-4) {
