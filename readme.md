@@ -6,9 +6,13 @@ http://richard.burtons.org/
 Branch rboot4lcm to complement homeaccessorykid/life-cycle-manager
 ------------------------------------------------------------------
 The objective of this branch is to make rboot recognize multiple power reboots
-in short time. If detected the lcm ota-main sector will be launched. Based on 
+in short time. If detected the bootslot1 with lcm ota-main will be launched. Based on 
 the amount of reboots, also the sys-param area will be cleared. This provides a
-fallback at all times to recover from bad user code or to change the user repository.
+fallback at all times to recover from bad user code or to change the user repository.  
+Used by the wrapper repo [rboot4lcm](https://github.com/HomeACcessoryKid/rboot4lcm) to make it run in esp-open-rtos.
+You can use the normal bootloader of esp-open-rtos becasue the latest release will be downloaded by
+[lcm](https://github.com/HomeACcessoryKid/life-cycle-manager) which also allows for future updates.  
+If the `led_info=rboot_config.unused[1]` is not equal to zero, it will be used to drive a led. See code for details.
 
 Below is the standard readme that comes with the rboot repository
 -----------------------------------------------------------------

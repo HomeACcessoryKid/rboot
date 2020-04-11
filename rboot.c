@@ -341,7 +341,7 @@ the last byte will contain the amount of open continue-bits and is a signal for 
 	ets_delay_us(BOOT_DELAY_MICROS);
 #endif
 
-    ets_printf("\r\nrBoot4LCM v0.9.2\r\n");
+    ets_printf("\r\nrBoot4LCM v1.0.0\r\n");
     if (count<33)  ets_printf("reformatted start_bits field: %08x count: %d\n",start_bits,count);
     //find the beginning of start-bit-range
     do {SPIRead(loadAddr,&start_bits,4);
@@ -377,7 +377,7 @@ the last byte will contain the amount of open continue-bits and is a signal for 
 	if (!(led_info&(1<<7)) && !((~led_info)&(1<<6))) {
 	    polarity=led_info&0x10; led_pin=led_info&0x0f;
 	    if ( (led_pin!=0 && led_pin<6) || led_pin>11 ) led_valid=1; //do not allow pins 0 and 6-11
-        ets_printf("led_pin=%d, polarity=%d, led_valid=%d\n",led_pin,polarity,led_valid);
+        ets_printf("led_pin=%d,  polarity=%d,  led_valid=%d\n",led_pin,polarity>>4,led_valid);
 	}
 
     uint32_t old_dir,new_dir,iomux_reg,old_iomux,gpio_func,new_iomux,old_out,new_out;
