@@ -341,7 +341,7 @@ the last byte will contain the amount of open continue-bits and is a signal for 
 	ets_delay_us(BOOT_DELAY_MICROS);
 #endif
 
-    ets_printf("\r\nrBoot4LCM v1.0.0\r\n");
+    ets_printf("\r\nrBoot4LCM v" VERSION "\r\n");
     if (count<33)  ets_printf("reformatted start_bits field: %08x count: %d\n",start_bits,count);
     //find the beginning of start-bit-range
     do {SPIRead(loadAddr,&start_bits,4);
